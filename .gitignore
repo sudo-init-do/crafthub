@@ -1,0 +1,41 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Build / cache
+bin/
+build/
+dist/
+*.log
+
+# Go modules
+vendor/
+*.sum
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment & configs
+.env
+.env.local
+.env.*.local
+
+# Docker
+postgres-data/
+redis-data/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Coverage / test output
+*.coverprofile
+coverage.out
