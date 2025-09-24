@@ -41,7 +41,8 @@ func main() {
 	// Wallet routes (protected with JWT middleware)
 	walletGroup := e.Group("/wallet", custommw.JWTMiddleware)
 	walletGroup.GET("/balance", wallet.Balance)
-	walletGroup.POST("/topup/init", wallet.TopupInit) // fixed name here
+	walletGroup.POST("/topup/init", wallet.TopupInit)
+	walletGroup.POST("/topup/confirm", wallet.ConfirmTopup) 
 
 	// Start server
 	port := os.Getenv("PORT")

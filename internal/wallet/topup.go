@@ -57,3 +57,72 @@ func TopupInit(c echo.Context) error {
 		Message: "Topup initialized. Complete payment at " + paymentURL,
 	})
 }
+
+// -----------------------------
+// ConfirmTopup handler
+// -----------------------------
+
+type ConfirmTopupRequest struct {
+	TopupID string `json:"topup_id"`
+	Status  string `json:"status"` // must be "success"
+}
+
+func ConfirmTopup(c echo.Context) error {
+	var req ConfirmTopupRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
+	}
+
+	// Validate UUID
+	topupUUID, err := uuid.Parse(req.TopupID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid topup_id"})
+	}
+
+	conn := db.Conn
+	ctx := context.Background()
+
+	// Fetch topup
+	var userID string
+	var amount int64
+	var status string
+	err = conn.QueryRow(ctx,
+		`SELECT user_id, amount, status 
+		 FROM topups 
+		 WHERE id = $1`, topupUUID,
+	).Scan(&userID, &amount, &status)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "topup not found"})
+	}
+
+	// If already completed
+	if status == "completed" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "topup already confirmed"})
+	}
+
+	// Only accept "success" → mark as "completed"
+	if req.Status == "success" {
+		_, err = conn.Exec(ctx, `UPDATE topups SET status = 'completed' WHERE id = $1`, topupUUID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update topup"})
+		}
+
+		_, err = conn.Exec(ctx,
+			`UPDATE wallets SET balance = balance + $1 WHERE user_id = $2`,
+			amount, userID,
+		)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update wallet"})
+		}
+
+		var balance int64
+		_ = conn.QueryRow(ctx, `SELECT balance FROM wallets WHERE user_id = $1`, userID).Scan(&balance)
+
+		return c.JSON(http.StatusOK, echo.Map{
+			"message": "Topup confirmed and wallet updated",
+			"balance": balance,
+		})
+	}
+
+	return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid status"})
+}
