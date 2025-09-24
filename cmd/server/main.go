@@ -7,11 +7,11 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	echomw "github.com/labstack/echo/v4/middleware" // alias to avoid conflict
 
 	"github.com/sudo-init-do/crafthub/internal/auth"
 	"github.com/sudo-init-do/crafthub/internal/db"
-	"github.com/sudo-init-do/crafthub/internal/middleware"
+	custommw "github.com/sudo-init-do/crafthub/internal/middleware" // alias for our JWT middleware
 	"github.com/sudo-init-do/crafthub/internal/wallet"
 )
 
@@ -19,14 +19,14 @@ func main() {
 	// Load env file
 	_ = godotenv.Load()
 
-	// Connect DB
-	dbConn := db.Connect()
-	defer dbConn.Close()
+	// Connect DB (global db.Conn)
+	db.Init()
+	defer db.Conn.Close()
 
 	// Init Echo
 	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	e.Use(echomw.Logger())
+	e.Use(echomw.Recover())
 
 	// Health check
 	e.GET("/", func(c echo.Context) error {
@@ -38,9 +38,10 @@ func main() {
 	e.POST("/auth/login", auth.Login)
 	e.GET("/auth/me", auth.Me)
 
-	// Wallet routes (protected with JWT)
-	walletGroup := e.Group("/wallet", middlewarex.JWTMiddleware)
+	// Wallet routes (protected with JWT middleware)
+	walletGroup := e.Group("/wallet", custommw.JWTMiddleware)
 	walletGroup.GET("/balance", wallet.Balance)
+	walletGroup.POST("/topup/init", wallet.TopupInit) // fixed name here
 
 	// Start server
 	port := os.Getenv("PORT")

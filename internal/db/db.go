@@ -9,20 +9,28 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var Pool *pgxpool.Pool
+var Conn *pgxpool.Pool
 
-func Connect() *pgxpool.Pool {
-	url := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
+// Init connects to Postgres
+func Init() {
+	dsn := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s",
 		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASS"),
+		os.Getenv("DB_PASSWORD"),
 		os.Getenv("DB_HOST"),
+		os.Getenv("DB_PORT"),
 		os.Getenv("DB_NAME"),
 	)
 
-	pool, err := pgxpool.New(context.Background(), url)
+	var err error
+	Conn, err = pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
-	Pool = pool
-	return pool
+
+	if err = Conn.Ping(context.Background()); err != nil {
+		log.Fatalf("Unable to ping database: %v\n", err)
+	}
+
+	log.Println("Connected to Postgres successfully")
 }

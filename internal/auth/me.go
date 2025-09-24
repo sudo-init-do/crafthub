@@ -43,7 +43,7 @@ func Me(c echo.Context) error {
 
 	// Query DB for user
 	var id, name, email, role string
-	err = db.Pool.QueryRow(context.Background(),
+	err = db.Conn.QueryRow(context.Background(),
 		`SELECT id, name, email, role FROM users WHERE id=$1`, userID).
 		Scan(&id, &name, &email, &role)
 

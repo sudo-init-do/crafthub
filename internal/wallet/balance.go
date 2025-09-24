@@ -17,7 +17,7 @@ func Balance(c echo.Context) error {
 	}
 
 	var balance int64
-	err := db.Pool.QueryRow(context.Background(),
+	err := db.Conn.QueryRow(context.Background(),
 		`SELECT balance FROM wallets WHERE user_id=$1`, userID).
 		Scan(&balance)
 

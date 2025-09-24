@@ -13,8 +13,6 @@ import (
 	"github.com/sudo-init-do/crafthub/internal/db"
 )
 
-var jwtSecret = []byte("supersecret") // will override with env
-
 type SignupRequest struct {
 	Name     string `json:"name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
@@ -39,7 +37,7 @@ func Signup(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "server error"})
 	}
 
-	conn := db.Pool
+	conn := db.Conn 
 	ctx := context.Background()
 
 	tx, err := conn.Begin(ctx)
@@ -59,8 +57,9 @@ func Signup(c echo.Context) error {
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO wallets (user_id, balance) VALUES ($1, 0)
-	`, userID)
+		INSERT INTO wallets (user_id, balance, created_at)
+		VALUES ($1, 0, $2)
+	`, userID, time.Now())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "wallet creation failed"})
 	}

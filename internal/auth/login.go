@@ -28,7 +28,7 @@ func Login(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
 	}
 
-	conn := db.Pool
+	conn := db.Conn
 	ctx := context.Background()
 
 	var userID, hashedPassword, role string
