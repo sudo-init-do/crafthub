@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS withdrawals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

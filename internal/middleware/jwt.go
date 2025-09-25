@@ -1,4 +1,4 @@
-package middlewarex
+package middleware
 
 import (
 	"net/http"
@@ -28,8 +28,8 @@ func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		// Attach both token and user_id
-		c.Set("user", token) 
-		if uid, ok := claims["user_id"].(string); ok {
+		c.Set("user", token)
+		if uid, ok := claims["id"].(string); ok {
 			c.Set("user_id", uid)
 		}
 

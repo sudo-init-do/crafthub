@@ -45,12 +45,13 @@ func Login(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid credentials"})
 	}
 
-	// Create JWT
+	// Create JWT with "id" 
 	claims := jwt.MapClaims{
-		"user_id": userID,
-		"role":    role,
-		"exp":     time.Now().Add(72 * time.Hour).Unix(),
+		"id":   userID,
+		"role": role,
+		"exp":  time.Now().Add(72 * time.Hour).Unix(),
 	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 	if err != nil {
