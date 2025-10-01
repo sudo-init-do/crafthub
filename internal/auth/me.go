@@ -10,7 +10,7 @@ import (
 
 // Me returns the currently authenticated user's profile
 func Me(c echo.Context) error {
-	// Grab user_id from middleware (already validated by JWTMiddleware)
+	// Grab user_id from middleware
 	userID, ok := c.Get("user_id").(string)
 	if !ok || userID == "" {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token claims"})

@@ -16,24 +16,28 @@ import (
 )
 
 func main() {
+	// Load env vars
 	_ = godotenv.Load()
 
+	// Init DB
 	db.Init()
 	defer db.Conn.Close()
 
+	// Init Echo
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	// Health check
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "CraftHub API running")
 	})
 
-	// Public auth
+	// ===== Public Auth Routes =====
 	e.POST("/auth/signup", auth.Signup)
 	e.POST("/auth/login", auth.Login)
 
-	// Protected routes
+	// ===== Protected Routes =====
 	protected := e.Group("")
 	protected.Use(custommw.JWTMiddleware)
 
@@ -49,6 +53,16 @@ func main() {
 	walletGroup.POST("/withdraw/init", wallet.InitWithdrawal)
 	walletGroup.POST("/withdraw/confirm", wallet.ConfirmWithdrawal)
 
+	// ===== Admin Routes =====
+	adminGroup := protected.Group("/admin")
+	adminGroup.Use(custommw.AdminGuard)
+
+	// Withdrawals Management
+	adminGroup.GET("/withdrawals/pending", wallet.ListPendingWithdrawals)
+	adminGroup.POST("/withdrawals/:id/approve", wallet.ApproveWithdrawal)
+	adminGroup.POST("/withdrawals/:id/reject", wallet.RejectWithdrawal)
+
+	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

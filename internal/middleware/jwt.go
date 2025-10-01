@@ -27,10 +27,15 @@ func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid or expired token"})
 		}
 
-		// Attach both token and user_id
-		c.Set("user", token)
-		if uid, ok := claims["id"].(string); ok {
+		// Attach claims to context
+		if uid, ok := claims["user_id"].(string); ok {
 			c.Set("user_id", uid)
+		} else {
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "missing user_id in token"})
+		}
+
+		if role, ok := claims["role"].(string); ok {
+			c.Set("role", role)
 		}
 
 		return next(c)

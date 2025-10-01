@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 
@@ -22,6 +22,7 @@ type LoginResponse struct {
 	Token string `json:"token"`
 }
 
+// ===== Login =====
 func Login(c echo.Context) error {
 	req := new(LoginRequest)
 	if err := c.Bind(req); err != nil {
@@ -31,27 +32,28 @@ func Login(c echo.Context) error {
 	conn := db.Conn
 	ctx := context.Background()
 
-	var userID, hashedPassword, role string
+	var (
+		userID   string
+		password string
+		role     string
+	)
 	err := conn.QueryRow(ctx, `
-		SELECT id, password, role FROM users WHERE email=$1
-	`, req.Email).Scan(&userID, &hashedPassword, &role)
-
+		SELECT id, password, role FROM users WHERE email = $1
+	`, req.Email).Scan(&userID, &password, &role)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid credentials"})
 	}
 
-	// Compare passwords
-	if bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(req.Password)) != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(password), []byte(req.Password)); err != nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid credentials"})
 	}
 
-	// Create JWT with "id" 
+	// JWT with role
 	claims := jwt.MapClaims{
-		"id":   userID,
-		"role": role,
-		"exp":  time.Now().Add(72 * time.Hour).Unix(),
+		"user_id": userID,
+		"role":    role,
+		"exp":     time.Now().Add(72 * time.Hour).Unix(),
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 	if err != nil {

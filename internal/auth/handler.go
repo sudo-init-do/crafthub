@@ -17,14 +17,14 @@ type SignupRequest struct {
 	Name     string `json:"name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=6"`
-	Role     string `json:"role" validate:"required,oneof=fan creator"`
+	Role     string `json:"role" validate:"required,oneof=fan creator admin"`
 }
 
 type SignupResponse struct {
 	Token string `json:"token"`
 }
 
-// Signup creates a user + wallet automatically
+// ===== Signup =====
 func Signup(c echo.Context) error {
 	req := new(SignupRequest)
 	if err := c.Bind(req); err != nil {
@@ -37,7 +37,7 @@ func Signup(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "server error"})
 	}
 
-	conn := db.Conn 
+	conn := db.Conn
 	ctx := context.Background()
 
 	tx, err := conn.Begin(ctx)
@@ -68,7 +68,7 @@ func Signup(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "transaction failed"})
 	}
 
-	// JWT
+	// JWT with role
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    req.Role,
