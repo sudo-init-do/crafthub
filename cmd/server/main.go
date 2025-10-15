@@ -16,14 +16,14 @@ import (
 )
 
 func main() {
-	// Load env vars
+	// Load environment variables
 	_ = godotenv.Load()
 
-	// Init DB
+	// Initialize DB
 	db.Init()
 	defer db.Conn.Close()
 
-	// Init Echo
+	// Initialize Echo
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -44,12 +44,12 @@ func main() {
 	// Auth
 	protected.GET("/auth/me", auth.Me)
 
-	// Wallet
+	// ===== Wallet Routes (User) =====
 	walletGroup := protected.Group("/wallet")
 	walletGroup.GET("/balance", wallet.Balance)
 	walletGroup.POST("/topup/init", wallet.TopupInit)
 	walletGroup.POST("/topup/confirm", wallet.ConfirmTopup)
-	walletGroup.GET("/transactions", wallet.TransactionsHandler)
+	walletGroup.GET("/transactions", wallet.GetUserTransactions) // user view
 	walletGroup.POST("/withdraw/init", wallet.InitWithdrawal)
 	walletGroup.POST("/withdraw/confirm", wallet.ConfirmWithdrawal)
 
@@ -57,10 +57,13 @@ func main() {
 	adminGroup := protected.Group("/admin")
 	adminGroup.Use(custommw.AdminGuard)
 
-	// Withdrawals Management
-	adminGroup.GET("/withdrawals/pending", wallet.ListPendingWithdrawals)
-	adminGroup.POST("/withdrawals/:id/approve", wallet.ApproveWithdrawal)
-	adminGroup.POST("/withdrawals/:id/reject", wallet.RejectWithdrawal)
+	// Admin Top-Up Management
+	adminGroup.GET("/topups/pending", wallet.ListPendingTopups)
+	adminGroup.POST("/topup/confirm", wallet.ConfirmTopup)
+
+	// Admin Transactions Monitoring
+	adminGroup.GET("/transactions", wallet.AdminGetAllTransactions)           // all transactions
+	adminGroup.GET("/user/:id/transactions", wallet.AdminGetUserTransactions) // per user
 
 	// Start server
 	port := os.Getenv("PORT")
