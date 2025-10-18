@@ -1,6 +1,6 @@
 module github.com/sudo-init-do/crafthub
 
-go 1.24.4
+go 1.23.3
 
 require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
