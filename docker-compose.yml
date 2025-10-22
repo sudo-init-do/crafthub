@@ -24,7 +24,7 @@ services:
     container_name: crafthub_api
     restart: always
     ports:
-      - "9090:8080"   # host:container (API accessible at localhost:9090)
+      - "8080:8080"    
     env_file:
       - .env
     depends_on:

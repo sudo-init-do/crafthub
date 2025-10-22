@@ -48,7 +48,6 @@ func Login(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid credentials"})
 	}
 
-	// JWT with role
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,

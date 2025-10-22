@@ -10,13 +10,11 @@ import (
 
 // Me returns the currently authenticated user's profile
 func Me(c echo.Context) error {
-	// Grab user_id from middleware
 	userID, ok := c.Get("user_id").(string)
 	if !ok || userID == "" {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token claims"})
 	}
 
-	// Query DB for user
 	var id, name, email, role string
 	err := db.Conn.QueryRow(context.Background(),
 		`SELECT id, name, email, role FROM users WHERE id=$1`, userID).
