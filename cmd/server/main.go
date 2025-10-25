@@ -11,9 +11,9 @@ import (
 
 	"github.com/sudo-init-do/crafthub/internal/auth"
 	"github.com/sudo-init-do/crafthub/internal/db"
+	"github.com/sudo-init-do/crafthub/internal/marketplace"
 	custommw "github.com/sudo-init-do/crafthub/internal/middleware"
 	"github.com/sudo-init-do/crafthub/internal/wallet"
-	"github.com/sudo-init-do/crafthub/internal/marketplace"
 )
 
 func main() {
