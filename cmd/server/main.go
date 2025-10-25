@@ -74,11 +74,22 @@ func main() {
 	marketGroup.POST("/orders", marketplace.CreateOrder)
 	marketGroup.GET("/orders", marketplace.GetUserOrders)
 
-	// Seller confirms order (holds buyer funds in escrow)
-	marketGroup.POST("/orders/:id/confirm", marketplace.ConfirmOrder)
+	// Seller approves/rejects pending orders
+	marketGroup.POST("/orders/:id/accept", marketplace.AcceptOrder)
+	marketGroup.POST("/orders/:id/reject", marketplace.RejectOrder)
 
 	// Buyer marks order as complete (releases funds to seller)
 	marketGroup.POST("/orders/:id/complete", marketplace.CompleteOrder)
+
+	// ===== Reviews Routes =====
+	// Buyer creates review for completed order
+	marketGroup.POST("/orders/:id/review", marketplace.CreateReview)
+
+	// Get review for specific order
+	marketGroup.GET("/orders/:id/review", marketplace.GetOrderReview)
+
+	// Get all reviews for a seller (public endpoint)
+	marketGroup.GET("/seller/:id/reviews", marketplace.GetSellerReviews)
 
 	// Start server
 	port := os.Getenv("PORT")

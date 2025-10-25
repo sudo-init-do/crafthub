@@ -39,3 +39,17 @@ Thumbs.db
 # Coverage / test output
 *.coverprofile
 coverage.out
+
+# Local development / testing files
+debug_db.sh
+migrate.sh
+setup_database.sh
+POSTMAN_TESTING_GUIDE.md
+QUICK_TEST_GUIDE.md
+SELLER_APPROVAL_FEATURE.md
+REVIEWS_TESTING_GUIDE.md
+CraftHub_Seller_Approval_Tests.postman_collection.json
+CraftHub_Local_Environment.postman_environment.json
+
+# Server binary from builds
+server
