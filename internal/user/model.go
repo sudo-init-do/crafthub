@@ -8,5 +8,7 @@ type User struct {
 	Email     string    `json:"email"`
 	Password  string    `json:"-"` // never return
 	Role      string    `json:"role"`
+	Bio       string    `json:"bio,omitempty"`
+	AvatarURL string    `json:"avatar_url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }

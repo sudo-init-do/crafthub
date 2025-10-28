@@ -13,6 +13,7 @@ import (
 	"github.com/sudo-init-do/crafthub/internal/db"
 	"github.com/sudo-init-do/crafthub/internal/marketplace"
 	custommw "github.com/sudo-init-do/crafthub/internal/middleware"
+	"github.com/sudo-init-do/crafthub/internal/user"
 	"github.com/sudo-init-do/crafthub/internal/wallet"
 )
 
@@ -38,12 +39,19 @@ func main() {
 	e.POST("/auth/signup", auth.Signup)
 	e.POST("/auth/login", auth.Login)
 
+	// ===== Public User Profile Route =====
+	e.GET("/user/:id", user.GetPublicProfile)
+
 	// ===== Protected Routes =====
 	protected := e.Group("")
 	protected.Use(custommw.JWTMiddleware)
 
 	// Auth
 	protected.GET("/auth/me", auth.Me)
+
+	// ===== User Routes =====
+	userGroup := protected.Group("/user")
+	userGroup.PATCH("/profile", user.UpdateProfile) // update name, bio, avatar, etc.
 
 	// ===== Wallet Routes =====
 	walletGroup := protected.Group("/wallet")
@@ -73,22 +81,13 @@ func main() {
 	// Orders
 	marketGroup.POST("/orders", marketplace.CreateOrder)
 	marketGroup.GET("/orders", marketplace.GetUserOrders)
-
-	// Seller approves/rejects pending orders
 	marketGroup.POST("/orders/:id/accept", marketplace.AcceptOrder)
 	marketGroup.POST("/orders/:id/reject", marketplace.RejectOrder)
-
-	// Buyer marks order as complete (releases funds to seller)
 	marketGroup.POST("/orders/:id/complete", marketplace.CompleteOrder)
 
-	// ===== Reviews Routes =====
-	// Buyer creates review for completed order
+	// Reviews
 	marketGroup.POST("/orders/:id/review", marketplace.CreateReview)
-
-	// Get review for specific order
 	marketGroup.GET("/orders/:id/review", marketplace.GetOrderReview)
-
-	// Get all reviews for a seller (public endpoint)
 	marketGroup.GET("/seller/:id/reviews", marketplace.GetSellerReviews)
 
 	// Start server
