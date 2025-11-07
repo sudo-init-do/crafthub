@@ -1,100 +1,107 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/sudo-init-do/crafthub/internal/auth"
 	"github.com/sudo-init-do/crafthub/internal/db"
 	"github.com/sudo-init-do/crafthub/internal/marketplace"
-	custommw "github.com/sudo-init-do/crafthub/internal/middleware"
+	mware "github.com/sudo-init-do/crafthub/internal/middleware"
 	"github.com/sudo-init-do/crafthub/internal/user"
 	"github.com/sudo-init-do/crafthub/internal/wallet"
 )
 
 func main() {
-	// Load environment variables
-	_ = godotenv.Load()
-
-	// Initialize DB
+	// Initialize database connection
 	db.Init()
-	defer db.Conn.Close()
 
-	// Initialize Echo
 	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
 
-	// Health check
+	// Basic middleware
+	e.Use(middleware.Recover())
+	e.Use(middleware.Logger())
+
+	// Health and root routes
 	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "CraftHub API running")
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "service": "crafthub"})
+	})
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
+	})
+	e.GET("/healthz", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
+	})
+	e.GET("/ready", func(c echo.Context) error {
+		if db.Conn == nil {
+			return c.JSON(http.StatusServiceUnavailable, echo.Map{"status": "not_ready", "error": "db not initialized"})
+		}
+		if err := db.Conn.Ping(context.Background()); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, echo.Map{"status": "not_ready", "error": "db unreachable"})
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ready"})
 	})
 
-	// ===== Public Auth Routes =====
-	e.POST("/auth/signup", auth.Signup)
-	e.POST("/auth/login", auth.Login)
+	// Public routes
+	// Auth routes with per-IP rate limiting to protect signup/login from abuse
+	authGroup := e.Group("/auth")
+	authGroup.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(20)))
+	authGroup.POST("/signup", auth.Signup)
+	authGroup.POST("/login", auth.Login)
 
-	// ===== Public User Profile Route =====
-	e.GET("/user/:id", user.GetPublicProfile)
+	e.GET("/user/:id/profile", user.GetPublicProfile)
 
-	// ===== Protected Routes =====
-	protected := e.Group("")
-	protected.Use(custommw.JWTMiddleware)
+	e.GET("/marketplace/services", marketplace.GetAllServices)
+	e.GET("/sellers/:id/reviews", marketplace.GetSellerReviews)
 
-	// Auth
-	protected.GET("/auth/me", auth.Me)
+	// Protected routes
+	api := e.Group("")
+	api.Use(mware.JWTMiddleware)
 
-	// ===== User Routes =====
-	userGroup := protected.Group("/user")
-	userGroup.PATCH("/profile", user.UpdateProfile) // update name, bio, avatar, etc.
+	api.GET("/auth/me", auth.Me)
 
-	// ===== Wallet Routes =====
-	walletGroup := protected.Group("/wallet")
-	walletGroup.GET("/balance", wallet.Balance)
-	walletGroup.POST("/topup/init", wallet.TopupInit)
-	walletGroup.POST("/topup/confirm", wallet.ConfirmTopup)
-	walletGroup.GET("/transactions", wallet.GetUserTransactions)
-	walletGroup.POST("/withdraw/init", wallet.InitWithdrawal)
-	walletGroup.POST("/withdraw/confirm", wallet.ConfirmWithdrawal)
+	api.PATCH("/user/profile", user.UpdateProfile)
 
-	// ===== Admin Routes =====
-	adminGroup := protected.Group("/admin")
-	adminGroup.Use(custommw.AdminGuard)
-	adminGroup.GET("/topups/pending", wallet.ListPendingTopups)
-	adminGroup.POST("/topup/confirm", wallet.ConfirmTopup)
-	adminGroup.GET("/transactions", wallet.AdminGetAllTransactions)
-	adminGroup.GET("/user/:id/transactions", wallet.AdminGetUserTransactions)
+	api.GET("/wallet/balance", wallet.Balance)
+	api.GET("/wallet/transactions", wallet.GetUserTransactions)
+	api.POST("/wallet/topup", wallet.TopupInit)
+	api.POST("/wallet/topup/confirm", wallet.ConfirmTopup)
+	api.POST("/wallet/withdraw", wallet.InitWithdrawal)
+	api.POST("/wallet/withdraw/confirm", wallet.ConfirmWithdrawal)
 
-	// ===== Marketplace Routes =====
-	marketGroup := protected.Group("/marketplace")
+	api.POST("/marketplace/services", marketplace.CreateService, mware.RequireRoles("seller"))
+	api.GET("/marketplace/services/me", marketplace.GetUserServices, mware.RequireRoles("seller"))
 
-	// Services
-	marketGroup.POST("/services", marketplace.CreateService)
-	marketGroup.GET("/services", marketplace.GetAllServices)
-	marketGroup.GET("/my/services", marketplace.GetUserServices)
+	api.POST("/marketplace/orders", marketplace.CreateOrder, mware.RequireRoles("fan"))
+	api.POST("/marketplace/orders/:id/accept", marketplace.AcceptOrder, mware.RequireRoles("seller"))
+	api.POST("/marketplace/orders/:id/confirm", marketplace.ConfirmOrder, mware.RequireRoles("seller"))
+	// Release is an admin operation; wired under /admin below
+	api.GET("/marketplace/orders/me", marketplace.GetUserOrders)
+	api.POST("/marketplace/orders/:id/review", marketplace.CreateReview)
+	api.GET("/marketplace/orders/:id/review", marketplace.GetOrderReview)
 
-	// Orders
-	marketGroup.POST("/orders", marketplace.CreateOrder)
-	marketGroup.GET("/orders", marketplace.GetUserOrders)
-	marketGroup.POST("/orders/:id/accept", marketplace.AcceptOrder)
-	marketGroup.POST("/orders/:id/reject", marketplace.RejectOrder)
-	marketGroup.POST("/orders/:id/complete", marketplace.CompleteOrder)
+	// Admin routes
+	admin := e.Group("/admin")
+	admin.Use(mware.JWTMiddleware)
+	admin.Use(mware.AdminGuard)
 
-	// Reviews
-	marketGroup.POST("/orders/:id/review", marketplace.CreateReview)
-	marketGroup.GET("/orders/:id/review", marketplace.GetOrderReview)
-	marketGroup.GET("/seller/:id/reviews", marketplace.GetSellerReviews)
+	admin.GET("/transactions", wallet.AdminGetAllTransactions)
+	admin.GET("/transactions/user/:id", wallet.AdminGetUserTransactions)
+	admin.GET("/topups/pending", wallet.ListPendingTopups)
+	admin.POST("/orders/:id/release", marketplace.ReleaseOrder)
+	admin.GET("/transactions/all", wallet.GetAllTransactions)
 
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	log.Printf("CraftHub API running on port %s", port)
-	log.Fatal(e.Start(":" + port))
+	if err := e.Start(":" + port); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
 }

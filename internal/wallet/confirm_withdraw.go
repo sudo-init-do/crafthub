@@ -3,14 +3,15 @@ package wallet
 import (
 	"context"
 	"net/http"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/sudo-init-do/crafthub/internal/db"
 )
 
 type ConfirmWithdrawalRequest struct {
 	WithdrawalID string `json:"withdrawal_id"`
-	Reference    string `json:"reference"`
 }
 
 func ConfirmWithdrawal(c echo.Context) error {
@@ -24,26 +25,67 @@ func ConfirmWithdrawal(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
 	}
 
-	// Verify the withdrawal belongs to the user
-	var exists bool
-	err := db.Conn.QueryRow(
-		context.Background(),
-		`SELECT EXISTS(SELECT 1 FROM withdrawals WHERE id=$1 AND user_id=$2)`,
+	ctx := context.Background()
+
+	tx, err := db.Conn.Begin(ctx)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not start transaction"})
+	}
+	defer tx.Rollback(ctx)
+
+	var userID string
+	var amount int64
+	var status string
+	err = tx.QueryRow(ctx,
+		`SELECT user_id, amount, status FROM withdrawals WHERE id=$1 AND user_id=$2 FOR UPDATE`,
 		req.WithdrawalID, uid,
-	).Scan(&exists)
-	if err != nil || !exists {
+	).Scan(&userID, &amount, &status)
+	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "withdrawal not found"})
 	}
 
-	// Update status to confirmed
-	_, err = db.Conn.Exec(
-		context.Background(),
-		`UPDATE withdrawals SET status='confirmed', reference=$1 WHERE id=$2`,
-		req.Reference, req.WithdrawalID,
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not confirm withdrawal"})
+	if status == "completed" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "withdrawal already completed"})
+	}
+	if status == "rejected" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "withdrawal rejected"})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"message": "withdrawal confirmed"})
+	// Check wallet balance
+	var balance int64
+	if err = tx.QueryRow(ctx, `SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE`, userID).Scan(&balance); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not fetch wallet balance"})
+	}
+	if amount > balance {
+		// Mark withdrawal failed
+		_, _ = tx.Exec(ctx, `UPDATE withdrawals SET status='failed' WHERE id=$1`, req.WithdrawalID)
+		// Log failed transaction
+		_, _ = tx.Exec(ctx,
+			`INSERT INTO transactions (id, user_id, type, amount, status, created_at)
+             VALUES ($1, $2, 'withdrawal', $3, 'failed', $4)`,
+			uuid.New().String(), userID, amount, time.Now(),
+		)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "insufficient balance"})
+	}
+
+	// Deduct and complete
+	if _, err = tx.Exec(ctx, `UPDATE wallets SET balance = balance - $1 WHERE user_id = $2`, amount, userID); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update wallet"})
+	}
+	if _, err = tx.Exec(ctx, `UPDATE withdrawals SET status='completed' WHERE id=$1`, req.WithdrawalID); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update withdrawal"})
+	}
+	_, _ = tx.Exec(ctx,
+		`INSERT INTO transactions (id, user_id, type, amount, status, created_at)
+         VALUES ($1, $2, 'withdrawal', $3, 'completed', $4)`,
+		uuid.New().String(), userID, amount, time.Now(),
+	)
+
+	if err = tx.Commit(ctx); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not finalize withdrawal"})
+	}
+
+	var newBalance int64
+	_ = db.Conn.QueryRow(ctx, `SELECT balance FROM wallets WHERE user_id = $1`, userID).Scan(&newBalance)
+	return c.JSON(http.StatusOK, echo.Map{"message": "withdrawal completed", "balance": newBalance})
 }

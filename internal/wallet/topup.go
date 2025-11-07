@@ -15,7 +15,7 @@ import (
 // Request / Response Models
 // -----------------------------
 type TopupRequest struct {
-	Amount int64 `json:"amount" validate:"required,min=100"`
+    Amount int64 `json:"amount" validate:"required,min=100"`
 }
 
 type TopupResponse struct {
@@ -33,10 +33,16 @@ type ConfirmTopupRequest struct {
 // TopupInit - Create Pending Record
 // -----------------------------
 func TopupInit(c echo.Context) error {
-	req := new(TopupRequest)
-	if err := c.Bind(req); err != nil || req.Amount <= 0 {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
-	}
+    req := new(TopupRequest)
+    if err := c.Bind(req); err != nil {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
+    }
+    if req.Amount < 100 {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "amount must be at least 100"})
+    }
+    if req.Amount > 10_000_000 {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "amount exceeds maximum limit"})
+    }
 
 	userID := c.Get("user_id").(string)
 	conn := db.Conn
@@ -70,69 +76,79 @@ func TopupInit(c echo.Context) error {
 // ConfirmTopup - Confirm Payment + Credit Wallet
 // -----------------------------
 func ConfirmTopup(c echo.Context) error {
-	var req ConfirmTopupRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
-	}
+    var req ConfirmTopupRequest
+    if err := c.Bind(&req); err != nil {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
+    }
 
 	topupUUID, err := uuid.Parse(req.TopupID)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid topup_id"})
 	}
 
-	conn := db.Conn
-	ctx := context.Background()
+    conn := db.Conn
+    ctx := context.Background()
 
-	var userID string
-	var amount int64
-	var status string
-	err = conn.QueryRow(ctx,
-		`SELECT user_id, amount, status 
-		 FROM topups 
-		 WHERE id = $1`, topupUUID,
-	).Scan(&userID, &amount, &status)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, echo.Map{"error": "topup not found"})
-	}
+    tx, err := conn.Begin(ctx)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not start transaction"})
+    }
+    defer tx.Rollback(ctx)
 
-	if status == "completed" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "topup already confirmed"})
-	}
+    var userID string
+    var amount int64
+    var status string
+    err = tx.QueryRow(ctx,
+        `SELECT user_id, amount, status 
+         FROM topups 
+         WHERE id = $1 FOR UPDATE`, topupUUID,
+    ).Scan(&userID, &amount, &status)
+    if err != nil {
+        return c.JSON(http.StatusNotFound, echo.Map{"error": "topup not found"})
+    }
 
-	if req.Status != "success" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid status"})
-	}
+    if status == "completed" {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "topup already confirmed"})
+    }
 
-	// Mark topup as completed
-	_, err = conn.Exec(ctx, `UPDATE topups SET status = 'completed' WHERE id = $1`, topupUUID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update topup"})
-	}
+    if req.Status != "success" {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid status"})
+    }
 
-	// Update wallet balance
-	_, err = conn.Exec(ctx,
-		`UPDATE wallets SET balance = balance + $1 WHERE user_id = $2`,
-		amount, userID,
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update wallet"})
-	}
+    // Mark topup as completed
+    _, err = tx.Exec(ctx, `UPDATE topups SET status = 'completed' WHERE id = $1`, topupUUID)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update topup"})
+    }
 
-	// Log transaction
-	_, _ = conn.Exec(ctx,
-		`INSERT INTO transactions (id, user_id, type, amount, status, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		uuid.New().String(), userID, "deposit", amount, "completed", time.Now(),
-	)
+    // Update wallet balance
+    _, err = tx.Exec(ctx,
+        `UPDATE wallets SET balance = balance + $1 WHERE user_id = $2`,
+        amount, userID,
+    )
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not update wallet"})
+    }
 
-	// Return new balance
-	var balance int64
-	_ = conn.QueryRow(ctx, `SELECT balance FROM wallets WHERE user_id = $1`, userID).Scan(&balance)
+    // Log transaction
+    _, _ = tx.Exec(ctx,
+        `INSERT INTO transactions (id, user_id, type, amount, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        uuid.New().String(), userID, "deposit", amount, "completed", time.Now(),
+    )
 
-	return c.JSON(http.StatusOK, echo.Map{
-		"message": "Topup confirmed and wallet updated",
-		"balance": balance,
-	})
+    if err = tx.Commit(ctx); err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not finalize topup"})
+    }
+
+    // Return new balance
+    var balance int64
+    _ = conn.QueryRow(ctx, `SELECT balance FROM wallets WHERE user_id = $1`, userID).Scan(&balance)
+
+    return c.JSON(http.StatusOK, echo.Map{
+        "message": "Topup confirmed and wallet updated",
+        "balance": balance,
+    })
 }
 
 // -----------------------------
