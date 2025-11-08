@@ -38,12 +38,25 @@ func Login(c echo.Context) error {
 		role     string
 	)
 	err := conn.QueryRow(ctx, `
-		SELECT id, password, role FROM users WHERE email = $1
-	`, req.Email).Scan(&userID, &password, &role)
+        SELECT id, password, role FROM users WHERE email = $1
+    `, req.Email).Scan(&userID, &password, &role)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid credentials"})
 	}
-
+	// Determine is_active if the column exists; default TRUE if missing
+	var isActive bool = true
+	var hasActiveCol bool
+	if err := conn.QueryRow(ctx, `
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'is_active'
+        )
+    `).Scan(&hasActiveCol); err == nil && hasActiveCol {
+		_ = conn.QueryRow(ctx, `SELECT COALESCE(is_active, TRUE) FROM users WHERE id = $1`, userID).Scan(&isActive)
+	}
+	if !isActive {
+		return c.JSON(http.StatusForbidden, echo.Map{"error": "account suspended"})
+	}
 	if err := bcrypt.CompareHashAndPassword([]byte(password), []byte(req.Password)); err != nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid credentials"})
 	}

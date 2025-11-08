@@ -1,21 +1,22 @@
 package wallet
 
 import (
-	"context"
-	"net/http"
+    "context"
+    "net/http"
+    "time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/sudo-init-do/crafthub/internal/db"
+    "github.com/labstack/echo/v4"
+    "github.com/sudo-init-do/crafthub/internal/db"
 )
 
 // AdminTransactionResponse is used for admin API responses
 type AdminTransactionResponse struct {
-	ID        string  `json:"id"`
-	UserID    string  `json:"user_id"`
-	Type      string  `json:"type"`
-	Amount    float64 `json:"amount"`
-	Status    string  `json:"status"`
-	CreatedAt string  `json:"created_at"`
+    ID        string  `json:"id"`
+    UserID    string  `json:"user_id"`
+    Type      string  `json:"type"`
+    Amount    float64 `json:"amount"`
+    Status    string  `json:"status"`
+    CreatedAt time.Time `json:"created_at"`
 }
 
 // AdminGetAllTransactions returns all transactions for admin monitoring

@@ -32,5 +32,39 @@ func Init() {
 		log.Fatalf("Unable to ping database: %v\n", err)
 	}
 
-	log.Println("Connected to Postgres successfully")
+    log.Println("Connected to Postgres successfully")
+
+    // Ensure users.is_active exists for suspend/activate functionality
+    ensureIsActiveColumn()
+}
+
+// ensureIsActiveColumn adds users.is_active if missing
+func ensureIsActiveColumn() {
+    ctx := context.Background()
+    var exists bool
+    err := Conn.QueryRow(ctx, `
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'is_active'
+        )`).Scan(&exists)
+    if err != nil {
+        log.Printf("schema check failed: %v", err)
+        return
+    }
+    if exists {
+        return
+    }
+    // Attempt to add the column with default TRUE
+    _, err = Conn.Exec(ctx, `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`)
+    if err != nil {
+        log.Printf("failed to add is_active column: %v", err)
+        return
+    }
+    // Backfill any NULLs (in case default didn't apply retroactively)
+    _, err = Conn.Exec(ctx, `UPDATE users SET is_active = TRUE WHERE is_active IS NULL`)
+    if err != nil {
+        log.Printf("failed to backfill is_active: %v", err)
+        return
+    }
+    log.Printf("users.is_active column ensured")
 }

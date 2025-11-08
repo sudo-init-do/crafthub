@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"github.com/sudo-init-do/crafthub/internal/admin"
 	"github.com/sudo-init-do/crafthub/internal/auth"
 	"github.com/sudo-init-do/crafthub/internal/db"
 	"github.com/sudo-init-do/crafthub/internal/marketplace"
@@ -53,6 +54,7 @@ func main() {
 	authGroup.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(20)))
 	authGroup.POST("/signup", auth.Signup)
 	authGroup.POST("/login", auth.Login)
+	authGroup.POST("/bootstrap/admin", auth.BootstrapAdmin)
 
 	e.GET("/user/:id/profile", user.GetPublicProfile)
 
@@ -74,27 +76,45 @@ func main() {
 	api.POST("/wallet/withdraw", wallet.InitWithdrawal)
 	api.POST("/wallet/withdraw/confirm", wallet.ConfirmWithdrawal)
 
-	api.POST("/marketplace/services", marketplace.CreateService, mware.RequireRoles("seller"))
-	api.GET("/marketplace/services/me", marketplace.GetUserServices, mware.RequireRoles("seller"))
+	// Allow both creators and fans to list and manage their services
+	api.POST("/marketplace/services", marketplace.CreateService, mware.RequireRoles("creator", "fan"))
+	api.GET("/marketplace/services/me", marketplace.GetUserServices, mware.RequireRoles("creator", "fan"))
 
 	api.POST("/marketplace/orders", marketplace.CreateOrder, mware.RequireRoles("fan"))
-	api.POST("/marketplace/orders/:id/accept", marketplace.AcceptOrder, mware.RequireRoles("seller"))
-	api.POST("/marketplace/orders/:id/confirm", marketplace.ConfirmOrder, mware.RequireRoles("seller"))
+	// Allow both creators and fans to act as sellers
+	api.POST("/marketplace/orders/:id/accept", marketplace.AcceptOrder, mware.RequireRoles("creator", "fan"))
+	api.POST("/marketplace/orders/:id/confirm", marketplace.ConfirmOrder, mware.RequireRoles("creator", "fan"))
 	// Release is an admin operation; wired under /admin below
 	api.GET("/marketplace/orders/me", marketplace.GetUserOrders)
 	api.POST("/marketplace/orders/:id/review", marketplace.CreateReview)
 	api.GET("/marketplace/orders/:id/review", marketplace.GetOrderReview)
 
 	// Admin routes
-	admin := e.Group("/admin")
-	admin.Use(mware.JWTMiddleware)
-	admin.Use(mware.AdminGuard)
+	adminGroup := e.Group("/admin")
+	adminGroup.Use(mware.JWTMiddleware)
+	adminGroup.Use(mware.AdminGuard)
 
-	admin.GET("/transactions", wallet.AdminGetAllTransactions)
-	admin.GET("/transactions/user/:id", wallet.AdminGetUserTransactions)
-	admin.GET("/topups/pending", wallet.ListPendingTopups)
-	admin.POST("/orders/:id/release", marketplace.ReleaseOrder)
-	admin.GET("/transactions/all", wallet.GetAllTransactions)
+	// Admin panels / CRUD
+	adminGroup.GET("/users", admin.ListUsers)
+	adminGroup.POST("/users/:id/suspend", admin.SuspendUser)
+	adminGroup.POST("/users/:id/activate", admin.ActivateUser)
+
+	adminGroup.GET("/bookings", admin.ListBookings)
+	adminGroup.GET("/wallets", admin.ListWallets)
+
+	// Transactions
+	adminGroup.GET("/transactions", wallet.AdminGetAllTransactions)
+	adminGroup.GET("/transactions/user/:id", wallet.AdminGetUserTransactions)
+	adminGroup.GET("/transactions/all", wallet.GetAllTransactions)
+
+	// Topups
+	adminGroup.GET("/topups/pending", wallet.ListPendingTopups)
+
+	// Order release (admin action)
+	adminGroup.POST("/orders/:id/release", marketplace.ReleaseOrder)
+
+	// Stats
+	adminGroup.GET("/stats", admin.Stats)
 
 	// Start server
 	port := os.Getenv("PORT")
