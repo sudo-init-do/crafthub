@@ -148,6 +148,10 @@ func ConfirmTopup(c echo.Context) error {
     }
     defer tx.Rollback(ctx)
 
+    // Ownership enforcement: only the owner of the topup can confirm it, unless admin
+    requesterID, _ := c.Get("user_id").(string)
+    requesterRole, _ := c.Get("role").(string)
+
     var userID string
     var amount int64
     var status string
@@ -158,6 +162,11 @@ func ConfirmTopup(c echo.Context) error {
     ).Scan(&userID, &amount, &status)
     if err != nil {
         return c.JSON(http.StatusNotFound, echo.Map{"error": "topup not found"})
+    }
+
+    // Enforce that non-admins can only confirm their own topups
+    if requesterRole != "admin" && requesterID != userID {
+        return c.JSON(http.StatusForbidden, echo.Map{"error": "not allowed to confirm another user's topup"})
     }
 
     if status == "completed" {

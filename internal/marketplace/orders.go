@@ -1,13 +1,13 @@
 package marketplace
 
 import (
-	"context"
-	"net/http"
-	"time"
+    "context"
+    "net/http"
+    "time"
 
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
-	"github.com/sudo-init-do/crafthub/internal/db"
+    "github.com/google/uuid"
+    "github.com/labstack/echo/v4"
+    "github.com/sudo-init-do/crafthub/internal/db"
 )
 
 // =========================
@@ -40,45 +40,29 @@ func CreateOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "you cannot order your own service"})
 	}
 
-	var balance float64
-	err = db.Conn.QueryRow(context.Background(),
-		`SELECT balance FROM wallets WHERE user_id = $1`,
-		buyerID,
-	).Scan(&balance)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "wallet not found"})
-	}
+    var balance float64
+    err = db.Conn.QueryRow(context.Background(),
+        `SELECT balance FROM wallets WHERE user_id = $1`,
+        buyerID,
+    ).Scan(&balance)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "wallet not found"})
+    }
 
-	if balance < price {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "insufficient balance"})
-	}
+    if balance < price {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "insufficient balance"})
+    }
 
-	tx, err := db.Conn.Begin(context.Background())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to start transaction"})
-	}
-	defer tx.Rollback(context.Background())
-
-	_, err = tx.Exec(context.Background(),
-		`UPDATE wallets SET balance = balance - $1 WHERE user_id = $2`,
-		price, buyerID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to hold funds"})
-	}
-
-	orderID := uuid.New().String()
-	_, err = tx.Exec(context.Background(),
-		`INSERT INTO orders (id, service_id, buyer_id, seller_id, amount, status, created_at)
-		 VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
-		orderID, req.ServiceID, buyerID, sellerID, price, time.Now(),
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to create order"})
-	}
-
-	if err = tx.Commit(context.Background()); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "transaction commit failed"})
-	}
+    // Do not deduct funds yet; just create a pending order.
+    orderID := uuid.New().String()
+    _, err = db.Conn.Exec(context.Background(),
+        `INSERT INTO orders (id, service_id, buyer_id, seller_id, amount, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
+        orderID, req.ServiceID, buyerID, sellerID, price, time.Now(),
+    )
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to create order"})
+    }
 
 	return c.JSON(http.StatusCreated, echo.Map{
 		"order_id": orderID,
@@ -133,40 +117,24 @@ func RejectOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "missing order id in URL"})
 	}
 
-	var buyerID string
-	var amount float64
-	err := db.Conn.QueryRow(context.Background(),
-		`SELECT buyer_id, amount FROM orders WHERE id = $1 AND seller_id = $2 AND status = 'pending'`,
-		orderID, sellerID).Scan(&buyerID, &amount)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "order not found or already handled"})
-	}
+    var buyerID string
+    var amount float64
+    err := db.Conn.QueryRow(context.Background(),
+        `SELECT buyer_id, amount FROM orders WHERE id = $1 AND seller_id = $2 AND status = 'pending'`,
+        orderID, sellerID).Scan(&buyerID, &amount)
+    if err != nil {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "order not found or already handled"})
+    }
 
-	tx, err := db.Conn.Begin(context.Background())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "transaction start failed"})
-	}
-	defer tx.Rollback(context.Background())
+    // No funds were deducted in 'pending' state, so just mark rejected.
+    _, err = db.Conn.Exec(context.Background(),
+        `UPDATE orders SET status = 'rejected', updated_at = NOW() WHERE id = $1`,
+        orderID)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update order status"})
+    }
 
-	_, err = tx.Exec(context.Background(),
-		`UPDATE wallets SET balance = balance + $1 WHERE user_id = $2`,
-		amount, buyerID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "refund failed"})
-	}
-
-	_, err = tx.Exec(context.Background(),
-		`UPDATE orders SET status = 'rejected', updated_at = NOW() WHERE id = $1`,
-		orderID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update order status"})
-	}
-
-	if err = tx.Commit(context.Background()); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "commit failed"})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"message": "Order rejected and buyer refunded"})
+    return c.JSON(http.StatusOK, echo.Map{"message": "Order rejected"})
 }
 
 // =========================
@@ -185,29 +153,37 @@ func CompleteOrder(c echo.Context) error {
 
 	var sellerID string
 	var amount float64
-	err := db.Conn.QueryRow(context.Background(),
-		`SELECT seller_id, amount FROM orders WHERE id = $1 AND buyer_id = $2 AND status = 'active'`,
-		orderID, buyerID).Scan(&sellerID, &amount)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "order not found or not active"})
-	}
+    err := db.Conn.QueryRow(context.Background(),
+        `SELECT seller_id, amount FROM orders WHERE id = $1 AND buyer_id = $2 AND status IN ('active','confirmed')`,
+        orderID, buyerID).Scan(&sellerID, &amount)
+    if err != nil {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "order not found or not active"})
+    }
 
-	tx, err := db.Conn.Begin(context.Background())
+    tx, err := db.Conn.Begin(context.Background())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "transaction start failed"})
 	}
 	defer tx.Rollback(context.Background())
 
-	_, err = tx.Exec(context.Background(),
-		`UPDATE wallets SET balance = balance + $1 WHERE user_id = $2`,
-		amount, sellerID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to release funds"})
-	}
+    // Move funds from buyer escrow to seller balance
+    _, err = tx.Exec(context.Background(),
+        `UPDATE wallets SET escrow = escrow - $1 WHERE user_id = $2 AND escrow >= $1`,
+        amount, buyerID)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to deduct buyer escrow"})
+    }
 
-	_, err = tx.Exec(context.Background(),
-		`UPDATE orders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
-		orderID)
+    _, err = tx.Exec(context.Background(),
+        `UPDATE wallets SET balance = balance + $1 WHERE user_id = $2`,
+        amount, sellerID)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to credit seller"})
+    }
+
+    _, err = tx.Exec(context.Background(),
+        `UPDATE orders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+        orderID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update status"})
 	}

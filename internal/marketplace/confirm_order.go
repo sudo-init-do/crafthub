@@ -1,13 +1,12 @@
 package marketplace
 
 import (
-	"context"
-	"database/sql"
-	"net/http"
-	"time"
+    "context"
+    "database/sql"
+    "net/http"
 
-	"github.com/labstack/echo/v4"
-	"github.com/sudo-init-do/crafthub/internal/db"
+    "github.com/labstack/echo/v4"
+    "github.com/sudo-init-do/crafthub/internal/db"
 )
 
 // ConfirmOrder - Seller confirms a pending order and deducts buyer funds (escrow)
@@ -44,11 +43,11 @@ func ConfirmOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "order not pending"})
 	}
 
-	// Fetch buyer wallet balance
-	var balance float64
-	err = db.Conn.QueryRow(ctx,
-		`SELECT balance FROM wallets WHERE user_id = $1`, buyerID,
-	).Scan(&balance)
+    // Fetch buyer wallet balance
+    var balance float64
+    err = db.Conn.QueryRow(ctx,
+        `SELECT balance FROM wallets WHERE user_id = $1`, buyerID,
+    ).Scan(&balance)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "buyer wallet not found"})
 	}
@@ -64,14 +63,14 @@ func ConfirmOrder(c echo.Context) error {
 	}
 	defer tx.Rollback(ctx)
 
-	// Deduct buyer funds (hold in escrow)
-	_, err = tx.Exec(ctx,
-		`UPDATE wallets SET balance = balance - $1 WHERE user_id = $2`,
-		amount, buyerID,
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to deduct buyer funds"})
-	}
+    // Move buyer funds into escrow
+    _, err = tx.Exec(ctx,
+        `UPDATE wallets SET balance = balance - $1, escrow = escrow + $1 WHERE user_id = $2`,
+        amount, buyerID,
+    )
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to move funds to escrow"})
+    }
 
 	// Update order status to 'confirmed'
 	_, err = tx.Exec(ctx,
@@ -82,22 +81,14 @@ func ConfirmOrder(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update order status"})
 	}
 
-	// Record transaction for buyer (debit)
-	_, err = tx.Exec(ctx,
-		`INSERT INTO transactions (user_id, amount, type, status, created_at)
-		 VALUES ($1, $2, 'debit', 'completed', $3)`,
-		buyerID, amount, time.Now(),
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record transaction"})
-	}
+    // Optionally record transaction here (skipped for simplicity; admin release logs transactions)
 
 	// Commit transaction
 	if err = tx.Commit(ctx); err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "commit failed"})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{
-		"message": "Order confirmed successfully. Buyer funds held in escrow.",
-	})
+    return c.JSON(http.StatusOK, echo.Map{
+        "message": "Order confirmed successfully. Buyer funds held in escrow.",
+    })
 }

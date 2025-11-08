@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
@@ -19,6 +20,8 @@ import (
 )
 
 func main() {
+	// Load environment variables from .env if present
+	_ = godotenv.Load()
 	// Initialize database connection
 	db.Init()
 
@@ -98,6 +101,8 @@ func main() {
 	adminGroup.GET("/users", admin.ListUsers)
 	adminGroup.POST("/users/:id/suspend", admin.SuspendUser)
 	adminGroup.POST("/users/:id/activate", admin.ActivateUser)
+	adminGroup.POST("/users/:id/promote_creator", admin.PromoteCreator)
+	adminGroup.POST("/users/:id/demote_creator", admin.DemoteCreator)
 
 	adminGroup.GET("/bookings", admin.ListBookings)
 	adminGroup.GET("/wallets", admin.ListWallets)

@@ -102,3 +102,31 @@ func ActivateUser(c echo.Context) error {
     }
     return c.JSON(http.StatusOK, echo.Map{"message": "user activated", "user_id": userID})
 }
+
+// POST /admin/users/:id/promote_creator
+func PromoteCreator(c echo.Context) error {
+    userID := c.Param("id")
+    if userID == "" {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "user id required"})
+    }
+
+    _, err := db.Conn.Exec(context.Background(), `UPDATE users SET role = 'creator' WHERE id = $1`, userID)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to promote user"})
+    }
+    return c.JSON(http.StatusOK, echo.Map{"message": "user promoted to creator", "user_id": userID})
+}
+
+// POST /admin/users/:id/demote_creator
+func DemoteCreator(c echo.Context) error {
+    userID := c.Param("id")
+    if userID == "" {
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "user id required"})
+    }
+
+    _, err := db.Conn.Exec(context.Background(), `UPDATE users SET role = 'fan' WHERE id = $1`, userID)
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to demote user"})
+    }
+    return c.JSON(http.StatusOK, echo.Map{"message": "user demoted to fan", "user_id": userID})
+}
