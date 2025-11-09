@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/sudo-init-do/crafthub/internal/admin"
+	"github.com/sudo-init-do/crafthub/internal/alerts"
 	"github.com/sudo-init-do/crafthub/internal/auth"
 	"github.com/sudo-init-do/crafthub/internal/db"
 	"github.com/sudo-init-do/crafthub/internal/marketplace"
@@ -24,6 +25,14 @@ func main() {
 	_ = godotenv.Load()
 	// Initialize database connection
 	db.Init()
+
+	// Initialize async job processor (notifications)
+	alerts.Init()
+
+	// Configure SMTP mailer from environment
+	if err := alerts.ConfigureMailerFromEnv(); err != nil {
+		log.Printf("SMTP not configured: %v", err)
+	}
 
 	e := echo.New()
 
@@ -58,6 +67,9 @@ func main() {
 	authGroup.POST("/signup", auth.Signup)
 	authGroup.POST("/login", auth.Login)
 	authGroup.POST("/bootstrap/admin", auth.BootstrapAdmin)
+	// Password reset (public)
+	authGroup.POST("/password/request", auth.RequestPasswordReset)
+	authGroup.POST("/password/reset", auth.ResetPassword)
 
 	e.GET("/user/:id/profile", user.GetPublicProfile)
 

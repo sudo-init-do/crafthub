@@ -1,13 +1,14 @@
 package marketplace
 
 import (
-	"context"
-	"database/sql"
-	"net/http"
-	"time"
+    "context"
+    "database/sql"
+    "net/http"
+    "time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/sudo-init-do/crafthub/internal/db"
+    "github.com/labstack/echo/v4"
+    "github.com/sudo-init-do/crafthub/internal/db"
+    "github.com/sudo-init-do/crafthub/internal/alerts"
 )
 
 // ReleaseOrder - Admin manually releases escrowed funds to the seller after confirmation.
@@ -114,14 +115,17 @@ func ReleaseOrder(c echo.Context) error {
 	}
 
 	// Commit transaction
-	if err = tx.Commit(ctx); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to commit transaction"})
-	}
+    if err = tx.Commit(ctx); err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to commit transaction"})
+    }
 
-	// Success response
-	return c.JSON(http.StatusOK, echo.Map{
-		"message":   "Escrow funds released successfully.",
-		"order_id":  orderID,
-		"seller_id": sellerID,
-	})
+    // Admin alert (best-effort)
+    _ = alerts.EnqueueAdminAlert(adminID, "info", "Order released: "+orderID)
+
+    // Success response
+    return c.JSON(http.StatusOK, echo.Map{
+        "message":   "Escrow funds released successfully.",
+        "order_id":  orderID,
+        "seller_id": sellerID,
+    })
 }

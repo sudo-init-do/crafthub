@@ -1,19 +1,20 @@
 package auth
 
 import (
-    "context"
-    "net/http"
-    "os"
-    "strings"
-    "time"
+	"context"
+	"net/http"
+	"os"
+	"strings"
+	"time"
 
-    "github.com/golang-jwt/jwt/v4"
-    "github.com/google/uuid"
-    "github.com/jackc/pgx/v5"
-    "github.com/labstack/echo/v4"
-    "golang.org/x/crypto/bcrypt"
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/labstack/echo/v4"
+	"golang.org/x/crypto/bcrypt"
 
-    "github.com/sudo-init-do/crafthub/internal/db"
+	"github.com/sudo-init-do/crafthub/internal/alerts"
+	"github.com/sudo-init-do/crafthub/internal/db"
 )
 
 type SignupRequest struct {
@@ -28,21 +29,21 @@ type SignupResponse struct {
 
 // ===== Signup =====
 func Signup(c echo.Context) error {
-    req := new(SignupRequest)
-    if err := c.Bind(req); err != nil {
-        return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
-    }
+	req := new(SignupRequest)
+	if err := c.Bind(req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
+	}
 
-    // Basic validation
-    if strings.TrimSpace(req.Name) == "" {
-        return c.JSON(http.StatusBadRequest, echo.Map{"error": "name is required"})
-    }
-    if strings.TrimSpace(req.Email) == "" || !strings.Contains(req.Email, "@") {
-        return c.JSON(http.StatusBadRequest, echo.Map{"error": "valid email is required"})
-    }
-    if len(req.Password) < 6 {
-        return c.JSON(http.StatusBadRequest, echo.Map{"error": "password must be at least 6 characters"})
-    }
+	// Basic validation
+	if strings.TrimSpace(req.Name) == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "name is required"})
+	}
+	if strings.TrimSpace(req.Email) == "" || !strings.Contains(req.Email, "@") {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "valid email is required"})
+	}
+	if len(req.Password) < 6 {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "password must be at least 6 characters"})
+	}
 
 	// Hash password
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -50,35 +51,35 @@ func Signup(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "server error"})
 	}
 
-    conn := db.Conn
-    ctx := context.Background()
+	conn := db.Conn
+	ctx := context.Background()
 
-    tx, err := conn.Begin(ctx)
-    if err != nil {
-        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "db transaction error"})
-    }
-    defer tx.Rollback(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "db transaction error"})
+	}
+	defer tx.Rollback(ctx)
 
-    // Check email uniqueness explicitly
-    var existingID string
-    err = conn.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, req.Email).Scan(&existingID)
-    if err == nil && existingID != "" {
-        return c.JSON(http.StatusConflict, echo.Map{"error": "email already exists"})
-    }
-    if err != nil && err != pgx.ErrNoRows {
-        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to check email uniqueness"})
-    }
+	// Check email uniqueness explicitly
+	var existingID string
+	err = conn.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, req.Email).Scan(&existingID)
+	if err == nil && existingID != "" {
+		return c.JSON(http.StatusConflict, echo.Map{"error": "email already exists"})
+	}
+	if err != nil && err != pgx.ErrNoRows {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to check email uniqueness"})
+	}
 
 	// Default role is always "fan"
 	var userID string
-    err = tx.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
         INSERT INTO users (id, name, email, password, role)
         VALUES ($1, $2, $3, $4, 'fan')
         RETURNING id
     `, uuid.New().String(), req.Name, req.Email, string(hashed)).Scan(&userID)
-    if err != nil {
-        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to create user"})
-    }
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to create user"})
+	}
 
 	// Create wallet for user
 	_, err = tx.Exec(ctx, `
@@ -92,6 +93,9 @@ func Signup(c echo.Context) error {
 	if err := tx.Commit(ctx); err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "transaction failed"})
 	}
+
+	// Enqueue welcome email (async, best-effort)
+	_ = alerts.EnqueueWelcomeEmail(userID, req.Email, req.Name)
 
 	// JWT with user_id
 	claims := jwt.MapClaims{

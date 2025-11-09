@@ -184,13 +184,32 @@ func CompleteOrder(c echo.Context) error {
     _, err = tx.Exec(context.Background(),
         `UPDATE orders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
         orderID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update status"})
-	}
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update status"})
+    }
 
-	if err = tx.Commit(context.Background()); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "commit failed"})
-	}
+    // Log transactions: buyer escrow release (debit) and seller credit
+    _, err = tx.Exec(context.Background(),
+        `INSERT INTO transactions (user_id, amount, type, status, reference, created_at)
+         VALUES ($1, $2, 'debit', 'escrow_release', $3, $4)`,
+        buyerID, amount, orderID, time.Now(),
+    )
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record buyer escrow release"})
+    }
+
+    _, err = tx.Exec(context.Background(),
+        `INSERT INTO transactions (user_id, amount, type, status, reference, created_at)
+         VALUES ($1, $2, 'credit', 'success', $3, $4)`,
+        sellerID, amount, orderID, time.Now(),
+    )
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record seller credit"})
+    }
+
+    if err = tx.Commit(context.Background()); err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "commit failed"})
+    }
 
 	return c.JSON(http.StatusOK, echo.Map{"message": "Order completed successfully"})
 }
