@@ -42,6 +42,10 @@ func Init() {
 	mux.HandleFunc(TaskBookingConfirmation, handleBookingConfirmation)
 	mux.HandleFunc(TaskAdminAlert, handleAdminAlert)
 	mux.HandleFunc(TaskPasswordReset, handlePasswordReset)
+	mux.HandleFunc(TaskOrderCancelled, handleOrderCancelled)
+	mux.HandleFunc(TaskOrderDeclined, handleOrderDeclined)
+	mux.HandleFunc(TaskOrderDelivered, handleOrderDelivered)
+	mux.HandleFunc(TaskOrderCompleted, handleOrderCompleted)
 
 	server = asynq.NewServer(opts, asynq.Config{
 		Concurrency: 5,
@@ -120,5 +124,53 @@ func handlePasswordReset(_ context.Context, t *asynq.Task) error {
 		return err
 	}
 	log.Printf("[notify] PasswordReset sent -> to=%s", p.Email)
+	return nil
+}
+
+func handleOrderCancelled(_ context.Context, t *asynq.Task) error {
+	var p OrderCancelledPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return err
+	}
+	if err := SendEmail(p.Email, p.Envelope.Subject, p.Envelope.Body); err != nil {
+		return err
+	}
+	log.Printf("[notify] OrderCancelled sent -> order=%s to=%s", p.OrderID, p.Email)
+	return nil
+}
+
+func handleOrderDeclined(_ context.Context, t *asynq.Task) error {
+	var p OrderDeclinedPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return err
+	}
+	if err := SendEmail(p.Email, p.Envelope.Subject, p.Envelope.Body); err != nil {
+		return err
+	}
+	log.Printf("[notify] OrderDeclined sent -> order=%s to=%s", p.OrderID, p.Email)
+	return nil
+}
+
+func handleOrderDelivered(_ context.Context, t *asynq.Task) error {
+	var p OrderDeliveredPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return err
+	}
+	if err := SendEmail(p.Email, p.Envelope.Subject, p.Envelope.Body); err != nil {
+		return err
+	}
+	log.Printf("[notify] OrderDelivered sent -> order=%s to=%s", p.OrderID, p.Email)
+	return nil
+}
+
+func handleOrderCompleted(_ context.Context, t *asynq.Task) error {
+	var p OrderCompletedPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return err
+	}
+	if err := SendEmail(p.Email, p.Envelope.Subject, p.Envelope.Body); err != nil {
+		return err
+	}
+	log.Printf("[notify] OrderCompleted sent -> order=%s to=%s", p.OrderID, p.Email)
 	return nil
 }

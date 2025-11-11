@@ -1,14 +1,14 @@
 package marketplace
 
 import (
-    "context"
-    "database/sql"
-    "net/http"
-    "time"
+	"context"
+	"database/sql"
+	"net/http"
+	"time"
 
-    "github.com/labstack/echo/v4"
-    "github.com/sudo-init-do/crafthub/internal/db"
-    "github.com/sudo-init-do/crafthub/internal/alerts"
+	"github.com/labstack/echo/v4"
+	"github.com/sudo-init-do/crafthub/internal/alerts"
+	"github.com/sudo-init-do/crafthub/internal/db"
 )
 
 // ConfirmOrder - Seller confirms a pending order and deducts buyer funds (escrow)
@@ -45,11 +45,11 @@ func ConfirmOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "order not pending"})
 	}
 
-    // Fetch buyer wallet balance
-    var balance float64
-    err = db.Conn.QueryRow(ctx,
-        `SELECT balance FROM wallets WHERE user_id = $1`, buyerID,
-    ).Scan(&balance)
+	// Fetch buyer wallet balance
+	var balance float64
+	err = db.Conn.QueryRow(ctx,
+		`SELECT balance FROM wallets WHERE user_id = $1`, buyerID,
+	).Scan(&balance)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "buyer wallet not found"})
 	}
@@ -65,14 +65,14 @@ func ConfirmOrder(c echo.Context) error {
 	}
 	defer tx.Rollback(ctx)
 
-    // Move buyer funds into escrow
-    _, err = tx.Exec(ctx,
-        `UPDATE wallets SET balance = balance - $1, escrow = escrow + $1 WHERE user_id = $2`,
-        amount, buyerID,
-    )
-    if err != nil {
-        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to move funds to escrow"})
-    }
+	// Move buyer funds into escrow
+	_, err = tx.Exec(ctx,
+		`UPDATE wallets SET balance = balance - $1, escrow = escrow + $1 WHERE user_id = $2`,
+		amount, buyerID,
+	)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to move funds to escrow"})
+	}
 
 	// Update order status to 'confirmed'
 	_, err = tx.Exec(ctx,
@@ -83,30 +83,30 @@ func ConfirmOrder(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update order status"})
 	}
 
-    // Optionally record transaction here (skipped for simplicity; admin release logs transactions)
-    // Log buyer escrow hold transaction
-    _, err = tx.Exec(ctx,
-        `INSERT INTO transactions (user_id, amount, type, status, reference, created_at)
-         VALUES ($1, $2, 'debit', 'escrow_hold', $3, $4)`,
-        buyerID, amount, orderID, time.Now(),
-    )
-    if err != nil {
-        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record escrow hold"})
-    }
+	// Optionally record transaction here (skipped for simplicity; admin release logs transactions)
+	// Log buyer escrow hold transaction
+	_, err = tx.Exec(ctx,
+		`INSERT INTO transactions (user_id, amount, type, status, reference, created_at)
+         VALUES ($1, $2, 'debit', 'pending', $3, $4)`,
+		buyerID, amount, orderID, time.Now(),
+	)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record escrow hold"})
+	}
 
-    // Commit transaction
-    if err = tx.Commit(ctx); err != nil {
-        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "commit failed"})
-    }
+	// Commit transaction
+	if err = tx.Commit(ctx); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "commit failed"})
+	}
 
-    // Lookup buyer email for confirmation notification
-    var buyerEmail string
-    _ = db.Conn.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, buyerID).Scan(&buyerEmail)
-    if buyerEmail != "" {
-        _ = alerts.EnqueueBookingConfirmation(orderID, buyerID, sellerID, buyerEmail, amount)
-    }
+	// Lookup buyer email for confirmation notification
+	var buyerEmail string
+	_ = db.Conn.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, buyerID).Scan(&buyerEmail)
+	if buyerEmail != "" {
+		_ = alerts.EnqueueBookingConfirmation(orderID, buyerID, sellerID, buyerEmail, amount)
+	}
 
-    return c.JSON(http.StatusOK, echo.Map{
-        "message": "Order confirmed successfully. Buyer funds held in escrow.",
-    })
+	return c.JSON(http.StatusOK, echo.Map{
+		"message": "Order confirmed successfully. Buyer funds held in escrow.",
+	})
 }

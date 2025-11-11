@@ -81,3 +81,59 @@ func EnqueuePasswordReset(userID, email, resetURL, name string) error {
 	_, err := ensureClient().Enqueue(task, asynq.Queue("emails"))
 	return err
 }
+
+// EnqueueOrderCancelled notifies the seller that the buyer cancelled the order
+func EnqueueOrderCancelled(orderID, buyerID, sellerID, sellerEmail string, amount float64) error {
+	env := EmailEnvelope{
+		To:      sellerEmail,
+		Subject: "Order cancelled by buyer",
+		Body:    fmt.Sprintf("Order %s was cancelled. Amount %.2f will be refunded if escrowed.", orderID, amount),
+	}
+	payload := OrderCancelledPayload{OrderID: orderID, BuyerID: buyerID, SellerID: sellerID, Email: sellerEmail, Amount: amount, Envelope: env, SentAt: time.Now()}
+	b, _ := json.Marshal(payload)
+	task := asynq.NewTask(TaskOrderCancelled, b)
+	_, err := ensureClient().Enqueue(task, asynq.Queue("emails"))
+	return err
+}
+
+// EnqueueOrderDeclined notifies the buyer that the seller declined the order
+func EnqueueOrderDeclined(orderID, buyerID, sellerID, buyerEmail string, amount float64) error {
+	env := EmailEnvelope{
+		To:      buyerEmail,
+		Subject: "Order declined by seller",
+		Body:    fmt.Sprintf("Order %s was declined by the seller. Amount %.2f will be refunded if escrowed.", orderID, amount),
+	}
+	payload := OrderDeclinedPayload{OrderID: orderID, BuyerID: buyerID, SellerID: sellerID, Email: buyerEmail, Amount: amount, Envelope: env, SentAt: time.Now()}
+	b, _ := json.Marshal(payload)
+	task := asynq.NewTask(TaskOrderDeclined, b)
+	_, err := ensureClient().Enqueue(task, asynq.Queue("emails"))
+	return err
+}
+
+// EnqueueOrderDelivered notifies the buyer that the seller delivered the work
+func EnqueueOrderDelivered(orderID, buyerID, sellerID, buyerEmail string, amount float64) error {
+	env := EmailEnvelope{
+		To:      buyerEmail,
+		Subject: "Your order has been delivered",
+		Body:    fmt.Sprintf("Order %s is delivered. Please review and complete to release payment.", orderID),
+	}
+	payload := OrderDeliveredPayload{OrderID: orderID, BuyerID: buyerID, SellerID: sellerID, Email: buyerEmail, Amount: amount, Envelope: env, SentAt: time.Now()}
+	b, _ := json.Marshal(payload)
+	task := asynq.NewTask(TaskOrderDelivered, b)
+	_, err := ensureClient().Enqueue(task, asynq.Queue("emails"))
+	return err
+}
+
+// EnqueueOrderCompleted notifies the seller that the buyer completed the order (payout incoming)
+func EnqueueOrderCompleted(orderID, buyerID, sellerID, sellerEmail string, amount float64) error {
+	env := EmailEnvelope{
+		To:      sellerEmail,
+		Subject: "Order completed and paid",
+		Body:    fmt.Sprintf("Order %s is completed. Amount %.2f has been released to your wallet.", orderID, amount),
+	}
+	payload := OrderCompletedPayload{OrderID: orderID, BuyerID: buyerID, SellerID: sellerID, Email: sellerEmail, Amount: amount, Envelope: env, SentAt: time.Now()}
+	b, _ := json.Marshal(payload)
+	task := asynq.NewTask(TaskOrderCompleted, b)
+	_, err := ensureClient().Enqueue(task, asynq.Queue("emails"))
+	return err
+}

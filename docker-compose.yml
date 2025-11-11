@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: crafthub_pass
       POSTGRES_DB: crafthub_db
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

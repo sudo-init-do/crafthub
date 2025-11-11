@@ -8,6 +8,10 @@ const (
     TaskBookingConfirmation = "email:booking_confirmation"
     TaskAdminAlert          = "email:admin_alert"
     TaskPasswordReset       = "email:password_reset"
+    TaskOrderCancelled      = "email:order_cancelled"
+    TaskOrderDeclined       = "email:order_declined"
+    TaskOrderDelivered      = "email:order_delivered"
+    TaskOrderCompleted      = "email:order_completed"
 )
 
 // Common envelope for email-like notifications
@@ -55,3 +59,46 @@ type PasswordResetPayload struct {
     Requested time.Time    `json:"requested"`
 }
 
+// Order cancelled payload (sent to seller)
+type OrderCancelledPayload struct {
+    OrderID  string        `json:"order_id"`
+    BuyerID  string        `json:"buyer_id"`
+    SellerID string        `json:"seller_id"`
+    Email    string        `json:"email"`
+    Amount   float64       `json:"amount"`
+    Envelope EmailEnvelope `json:"envelope"`
+    SentAt   time.Time     `json:"sent_at"`
+}
+
+// Order declined payload (sent to buyer)
+type OrderDeclinedPayload struct {
+    OrderID  string        `json:"order_id"`
+    BuyerID  string        `json:"buyer_id"`
+    SellerID string        `json:"seller_id"`
+    Email    string        `json:"email"`
+    Amount   float64       `json:"amount"`
+    Envelope EmailEnvelope `json:"envelope"`
+    SentAt   time.Time     `json:"sent_at"`
+}
+
+// Order delivered payload (sent to buyer)
+type OrderDeliveredPayload struct {
+    OrderID  string        `json:"order_id"`
+    BuyerID  string        `json:"buyer_id"`
+    SellerID string        `json:"seller_id"`
+    Email    string        `json:"email"`
+    Amount   float64       `json:"amount"`
+    Envelope EmailEnvelope `json:"envelope"`
+    SentAt   time.Time     `json:"sent_at"`
+}
+
+// Order completed payload (sent to seller)
+type OrderCompletedPayload struct {
+    OrderID  string        `json:"order_id"`
+    BuyerID  string        `json:"buyer_id"`
+    SellerID string        `json:"seller_id"`
+    Email    string        `json:"email"`
+    Amount   float64       `json:"amount"`
+    Envelope EmailEnvelope `json:"envelope"`
+    SentAt   time.Time     `json:"sent_at"`
+}
