@@ -17,6 +17,7 @@ import (
     w "github.com/sudo-init-do/crafthub/internal/wallet"
     admin "github.com/sudo-init-do/crafthub/internal/admin"
     user "github.com/sudo-init-do/crafthub/internal/user"
+    msg "github.com/sudo-init-do/crafthub/internal/messaging"
 )
 
 func main() {
@@ -70,6 +71,12 @@ func main() {
     g.GET("/marketplace/orders", market.GetUserOrders)
     g.POST("/admin/orders/:id/release", market.ReleaseOrder, appmw.AdminGuard)
 
+    // Messaging per order
+    g.GET("/marketplace/orders/:id/messages", msg.ListMessages)
+    g.POST("/marketplace/orders/:id/messages", msg.SendMessage)
+    g.POST("/marketplace/orders/:id/messages/:message_id/read", msg.MarkMessageRead)
+    g.GET("/marketplace/orders/:id/messages/unread_count", msg.UnreadCount)
+
     // Reviews
     g.POST("/marketplace/orders/:id/review", market.CreateReview)
     e.GET("/marketplace/sellers/:id/reviews", market.GetSellerReviews)
@@ -96,4 +103,3 @@ func main() {
         log.Fatalf("server error: %v", err)
     }
 }
-

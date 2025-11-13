@@ -27,8 +27,8 @@ func ReleaseOrder(c echo.Context) error {
 	ctx := context.Background()
 
 	var buyerID, sellerID string
-	var amount float64
-	var status string
+    var amount int64
+    var status string
 
 	// Fetch order details
 	err := db.Conn.QueryRow(ctx,
@@ -44,13 +44,13 @@ func ReleaseOrder(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to fetch order details"})
 	}
 
-	// Only release if order is ready for it
-	if status != "confirmed" && status != "completed_pending" {
-		return c.JSON(http.StatusBadRequest, echo.Map{
-			"error": "order not in a releasable state",
-			"status": status,
-		})
-	}
+    // Only release if order is ready for it
+    if status != "in_progress" && status != "delivered" {
+        return c.JSON(http.StatusBadRequest, echo.Map{
+            "error": "order not in a releasable state",
+            "status": status,
+        })
+    }
 
 	// Begin DB transaction
 	tx, err := db.Conn.Begin(ctx)
@@ -92,27 +92,15 @@ func ReleaseOrder(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update order status"})
 	}
 
-	// Log transactions
-
-	// Buyer transaction (escrow release)
-	_, err = tx.Exec(ctx,
-		`INSERT INTO transactions (user_id, amount, type, status, reference, created_at)
-		 VALUES ($1, $2, 'debit', 'escrow_release', $3, $4)`,
-		buyerID, amount, orderID, time.Now(),
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record buyer transaction"})
-	}
-
-	// Seller transaction (credit)
-	_, err = tx.Exec(ctx,
-		`INSERT INTO transactions (user_id, amount, type, status, reference, created_at)
-		 VALUES ($1, $2, 'credit', 'success', $3, $4)`,
-		sellerID, amount, orderID, time.Now(),
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record seller transaction"})
-	}
+    // Log seller credit transaction
+    _, err = tx.Exec(ctx,
+        `INSERT INTO transactions (user_id, amount, type, status, reference, created_at)
+         VALUES ($1, $2, 'credit', 'credited', $3, $4)`,
+        sellerID, amount, orderID, time.Now(),
+    )
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to record seller transaction"})
+    }
 
 	// Commit transaction
     if err = tx.Commit(ctx); err != nil {
