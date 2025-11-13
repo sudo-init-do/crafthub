@@ -54,13 +54,25 @@ func SendMessage(c echo.Context) error {
 	}
 
 	msgID := uuid.New().String()
-	_, err = db.Conn.Exec(context.Background(),
-		`INSERT INTO messages (id, order_id, sender_id, recipient_id, content) VALUES ($1, $2, $3, $4, $5)`,
+	var createdAt time.Time
+	err = db.Conn.QueryRow(context.Background(),
+		`INSERT INTO messages (id, order_id, sender_id, recipient_id, content)
+         VALUES ($1, $2, $3, $4, $5) RETURNING created_at`,
 		msgID, orderID, userID, recipientID, body.Content,
-	)
+	).Scan(&createdAt)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to send message"})
 	}
+
+	// Broadcast new message event to WS subscribers
+	BroadcastNewMessage(orderID, echo.Map{
+		"id":           msgID,
+		"order_id":     orderID,
+		"sender_id":    userID,
+		"recipient_id": recipientID,
+		"content":      body.Content,
+		"created_at":   createdAt.UTC().Format(time.RFC3339),
+	})
 
 	return c.JSON(http.StatusOK, echo.Map{"message_id": msgID})
 }
@@ -213,12 +225,21 @@ func MarkMessageRead(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "not the recipient"})
 	}
 
-	_, err = db.Conn.Exec(context.Background(),
-		`UPDATE messages SET read_at = NOW() WHERE id = $1 AND recipient_id = $2`, msgID, userID,
-	)
+	var readTS time.Time
+	err = db.Conn.QueryRow(context.Background(),
+		`UPDATE messages SET read_at = NOW() WHERE id = $1 AND recipient_id = $2 RETURNING read_at`, msgID, userID,
+	).Scan(&readTS)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to mark read"})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"message": "marked read"})
+	// Broadcast read event
+	BroadcastMessageRead(orderID, echo.Map{
+		"message_id": msgID,
+		"order_id":   orderID,
+		"user_id":    userID,
+		"read_at":    readTS.UTC().Format(time.RFC3339),
+	})
+
+	return c.JSON(http.StatusOK, echo.Map{"message_id": msgID, "read_at": readTS.UTC().Format(time.RFC3339)})
 }

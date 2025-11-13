@@ -76,6 +76,7 @@ func main() {
     g.POST("/marketplace/orders/:id/messages", msg.SendMessage)
     g.POST("/marketplace/orders/:id/messages/:message_id/read", msg.MarkMessageRead)
     g.GET("/marketplace/orders/:id/messages/unread_count", msg.UnreadCount)
+    g.GET("/ws/orders/:id", msg.OrderWS)
 
     // Reviews
     g.POST("/marketplace/orders/:id/review", market.CreateReview)
