@@ -137,3 +137,17 @@ func EnqueueOrderCompleted(orderID, buyerID, sellerID, sellerEmail string, amoun
 	_, err := ensureClient().Enqueue(task, asynq.Queue("emails"))
 	return err
 }
+
+// EnqueueMessageNew notifies the recipient about a new message on an order
+func EnqueueMessageNew(orderID, senderID, recipientEmail, recipientID, body string) error {
+	env := EmailEnvelope{
+		To:      recipientEmail,
+		Subject: "New message on your order",
+		Body:    fmt.Sprintf("You have a new message on order %s.\n\n%s", orderID, body),
+	}
+	payload := MessageNewPayload{OrderID: orderID, SenderID: senderID, Recipient: recipientID, Email: recipientEmail, Body: body, Envelope: env, SentAt: time.Now()}
+	b, _ := json.Marshal(payload)
+	task := asynq.NewTask(TaskMessageNew, b)
+	_, err := ensureClient().Enqueue(task, asynq.Queue("emails"))
+	return err
+}

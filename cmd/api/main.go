@@ -68,6 +68,7 @@ func main() {
     g.POST("/marketplace/orders/:id/decline", market.DeclineOrder)
     g.POST("/marketplace/orders/:id/deliver", market.DeliverOrder)
     g.POST("/marketplace/orders/:id/complete", market.CompleteOrder)
+    g.POST("/marketplace/orders/:id/dispute", market.OpenDispute)
     g.GET("/marketplace/orders", market.GetUserOrders)
     g.POST("/admin/orders/:id/release", market.ReleaseOrder, appmw.AdminGuard)
 
@@ -77,6 +78,10 @@ func main() {
     g.POST("/marketplace/orders/:id/messages/:message_id/read", msg.MarkMessageRead)
     g.GET("/marketplace/orders/:id/messages/unread_count", msg.UnreadCount)
     g.GET("/ws/orders/:id", msg.OrderWS)
+
+    // In-app notifications
+    g.GET("/notifications", alerts.ListNotifications)
+    g.POST("/notifications/:id/read", alerts.MarkNotificationRead)
 
     // Reviews
     g.POST("/marketplace/orders/:id/review", market.CreateReview)
@@ -91,11 +96,16 @@ func main() {
     adminGroup.GET("/bookings", admin.ListBookings)
     adminGroup.GET("/wallets", admin.ListWallets)
     adminGroup.GET("/transactions", w.AdminGetAllTransactions)
+    adminGroup.GET("/disputes", admin.ListDisputes)
+    adminGroup.POST("/disputes/:id/resolve", admin.ResolveDispute)
     adminGroup.GET("/users", admin.ListUsers)
     adminGroup.POST("/users/:id/suspend", admin.SuspendUser)
     adminGroup.POST("/users/:id/activate", admin.ActivateUser)
     adminGroup.POST("/users/:id/promote_creator", admin.PromoteCreator)
     adminGroup.POST("/users/:id/demote_creator", admin.DemoteCreator)
+    adminGroup.GET("/services", admin.ListServices)
+    adminGroup.POST("/services/:id/suspend", admin.SuspendService)
+    adminGroup.POST("/services/:id/approve", admin.ApproveService)
 
     port := os.Getenv("PORT")
     if port == "" { port = "8080" }

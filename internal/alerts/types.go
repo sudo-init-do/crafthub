@@ -12,6 +12,7 @@ const (
     TaskOrderDeclined       = "email:order_declined"
     TaskOrderDelivered      = "email:order_delivered"
     TaskOrderCompleted      = "email:order_completed"
+    TaskMessageNew          = "email:message_new"
 )
 
 // Common envelope for email-like notifications
@@ -101,4 +102,15 @@ type OrderCompletedPayload struct {
     Amount   float64       `json:"amount"`
     Envelope EmailEnvelope `json:"envelope"`
     SentAt   time.Time     `json:"sent_at"`
+}
+
+// Message new payload (sent to recipient on new message)
+type MessageNewPayload struct {
+    OrderID   string        `json:"order_id"`
+    SenderID  string        `json:"sender_id"`
+    Recipient string        `json:"recipient"`
+    Email     string        `json:"email"`
+    Body      string        `json:"body"`
+    Envelope  EmailEnvelope `json:"envelope"`
+    SentAt    time.Time     `json:"sent_at"`
 }

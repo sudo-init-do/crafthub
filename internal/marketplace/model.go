@@ -9,6 +9,23 @@ type Service struct {
     Title       string    `json:"title"`
     Description string    `json:"description"`
     Price       int64     `json:"price"`
+    Category    string    `json:"category,omitempty"`
+    DeliveryTimeDays int   `json:"delivery_time_days,omitempty"`
+    Status      string    `json:"status,omitempty"`
+    CreatedAt   time.Time `json:"created_at"`
+}
+
+// ServiceSummary is used in discovery responses with aggregated fields
+type ServiceSummary struct {
+    ID          string    `json:"id"`
+    UserID      string    `json:"user_id"`
+    Title       string    `json:"title"`
+    Description string    `json:"description"`
+    Price       int64     `json:"price"`
+    Category    string    `json:"category,omitempty"`
+    DeliveryTimeDays int   `json:"delivery_time_days,omitempty"`
+    Status      string    `json:"status,omitempty"`
+    AvgRating   float64   `json:"avg_rating"`
     CreatedAt   time.Time `json:"created_at"`
 }
 

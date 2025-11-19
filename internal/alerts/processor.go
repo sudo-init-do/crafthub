@@ -45,7 +45,8 @@ func Init() {
 	mux.HandleFunc(TaskOrderCancelled, handleOrderCancelled)
 	mux.HandleFunc(TaskOrderDeclined, handleOrderDeclined)
 	mux.HandleFunc(TaskOrderDelivered, handleOrderDelivered)
-	mux.HandleFunc(TaskOrderCompleted, handleOrderCompleted)
+    mux.HandleFunc(TaskOrderCompleted, handleOrderCompleted)
+    mux.HandleFunc(TaskMessageNew, handleMessageNew)
 
 	server = asynq.NewServer(opts, asynq.Config{
 		Concurrency: 5,
@@ -173,4 +174,16 @@ func handleOrderCompleted(_ context.Context, t *asynq.Task) error {
 	}
 	log.Printf("[notify] OrderCompleted sent -> order=%s to=%s", p.OrderID, p.Email)
 	return nil
+}
+
+func handleMessageNew(_ context.Context, t *asynq.Task) error {
+    var p MessageNewPayload
+    if err := json.Unmarshal(t.Payload(), &p); err != nil {
+        return err
+    }
+    if err := SendEmail(p.Email, p.Envelope.Subject, p.Envelope.Body); err != nil {
+        return err
+    }
+    log.Printf("[notify] MessageNew sent -> order=%s to=%s", p.OrderID, p.Email)
+    return nil
 }

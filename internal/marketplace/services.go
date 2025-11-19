@@ -21,11 +21,13 @@ func CreateService(c echo.Context) error {
     }
     role, _ := c.Get("role").(string)
 
-	var req struct {
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		Price       float64 `json:"price"`
-	}
+    var req struct {
+        Title             string  `json:"title"`
+        Description       string  `json:"description"`
+        Price             float64 `json:"price"`
+        Category          string  `json:"category"`
+        DeliveryTimeDays  int     `json:"delivery_time_days"`
+    }
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
 	}
@@ -58,9 +60,9 @@ func CreateService(c echo.Context) error {
 
 	_, err := db.Conn.Exec(
 		context.Background(),
-		`INSERT INTO services (id, user_id, title, description, price, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		serviceID, uid, req.Title, req.Description, req.Price, time.Now(),
+		`INSERT INTO services (id, user_id, title, description, price, category, delivery_time_days, status, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8)`,
+		serviceID, uid, req.Title, req.Description, req.Price, req.Category, req.DeliveryTimeDays, time.Now(),
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "could not create service"})
@@ -78,6 +80,10 @@ func GetAllServices(c echo.Context) error {
     q := c.QueryParam("q")
     minPrice := c.QueryParam("min_price")
     maxPrice := c.QueryParam("max_price")
+    category := c.QueryParam("category")
+    deliveryMax := c.QueryParam("delivery_time_max")
+    ratingMin := c.QueryParam("rating_min")
+    sort := c.QueryParam("sort")
     limit := 20
     offset := 0
     if l := c.QueryParam("limit"); l != "" {
@@ -92,7 +98,12 @@ func GetAllServices(c echo.Context) error {
     }
 
     // Build dynamic conditions
-    query := `SELECT id, user_id, title, description, price, created_at FROM services`
+    // Aggregated query to support rating filter/sort
+    query := `SELECT s.id, s.user_id, s.title, s.description, s.price, s.category, s.delivery_time_days, s.status, s.created_at,
+                     COALESCE(AVG(r.rating)::float, 0) AS avg_rating
+              FROM services s
+              LEFT JOIN orders o ON o.service_id = s.id
+              LEFT JOIN reviews r ON r.order_id = o.id`
     var where []string
     var args []any
 
@@ -103,12 +114,24 @@ func GetAllServices(c echo.Context) error {
         args = append(args, qArg, qArg)
     }
     if minPrice != "" {
-        where = append(where, "price >= $%d")
+        where = append(where, "s.price >= $%d")
         args = append(args, minPrice)
     }
     if maxPrice != "" {
-        where = append(where, "price <= $%d")
+        where = append(where, "s.price <= $%d")
         args = append(args, maxPrice)
+    }
+    if category != "" {
+        where = append(where, "s.category = $%d")
+        args = append(args, category)
+    }
+    if deliveryMax != "" {
+        where = append(where, "s.delivery_time_days <= $%d")
+        args = append(args, deliveryMax)
+    }
+    if ratingMin != "" {
+        // We will apply HAVING after GROUP BY; keep placeholder for now
+        // Use a marker to render later
     }
 
     // Replace placeholders with correct positions
@@ -130,16 +153,37 @@ func GetAllServices(c echo.Context) error {
             }
         }
         query += " WHERE " + strings.Join(rendered, " AND ")
+        // Keep idx for later appends
+        // idx reflects next parameter position
+        // We will reuse it below
+        // But since idx is local, recompute current parameter count
     }
-    query += " ORDER BY created_at DESC LIMIT $%d OFFSET $%d"
-    // Append limit and offset as final args
-    // Compute current arg index
+    // Group by service fields
+    query += " GROUP BY s.id ORDER BY "
+    switch sort {
+    case "price_asc":
+        query += "s.price ASC"
+    case "price_desc":
+        query += "s.price DESC"
+    case "rating_desc":
+        query += "avg_rating DESC"
+    case "oldest":
+        query += "s.created_at ASC"
+    default:
+        query += "s.created_at DESC"
+    }
+    // Optional rating_min HAVING clause
+    if ratingMin != "" {
+        // Append HAVING with next parameter index
+        currentIdx := 1
+        for range args { currentIdx++ }
+        query = strings.Replace(query, " GROUP BY s.id ORDER BY ", fmt.Sprintf(" GROUP BY s.id HAVING COALESCE(AVG(r.rating)::float,0) >= $%d ORDER BY ", currentIdx), 1)
+        args = append(args, ratingMin)
+    }
+    // Append limit and offset with next indices
     currentIdx := 1
-    for _, a := range args {
-        _ = a
-        currentIdx++
-    }
-    query = fmt.Sprintf(query, currentIdx, currentIdx+1)
+    for range args { currentIdx++ }
+    query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", currentIdx, currentIdx+1)
     args = append(args, limit, offset)
 
     rows, err := db.Conn.Query(context.Background(), query, args...)
@@ -148,14 +192,14 @@ func GetAllServices(c echo.Context) error {
     }
     defer rows.Close()
 
-	var services []Service
-	for rows.Next() {
-		var s Service
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Title, &s.Description, &s.Price, &s.CreatedAt); err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to parse service record"})
-		}
-		services = append(services, s)
-	}
+    var services []ServiceSummary
+    for rows.Next() {
+        var s ServiceSummary
+        if err := rows.Scan(&s.ID, &s.UserID, &s.Title, &s.Description, &s.Price, &s.Category, &s.DeliveryTimeDays, &s.Status, &s.CreatedAt, &s.AvgRating); err != nil {
+            return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to parse service record"})
+        }
+        services = append(services, s)
+    }
 
     return c.JSON(http.StatusOK, echo.Map{"services": services})
 }

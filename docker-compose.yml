@@ -28,7 +28,8 @@ services:
   api:
     build: .
     container_name: crafthub_api
-    restart: always
+    restart: unless-stopped
+    init: true
     ports:
       - "8080:8080"
     env_file:

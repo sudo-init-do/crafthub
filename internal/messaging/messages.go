@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"github.com/sudo-init-do/crafthub/internal/alerts"
 	"github.com/sudo-init-do/crafthub/internal/db"
 )
 
@@ -73,6 +74,19 @@ func SendMessage(c echo.Context) error {
 		"content":      body.Content,
 		"created_at":   createdAt.UTC().Format(time.RFC3339),
 	})
+
+	// In-app notification for recipient
+	notifTitle := "New message on your order"
+	ref := msgID
+	meta := "{}"
+	_ = alerts.CreateNotification(recipientID, "message:new", notifTitle, body.Content, &ref, &meta)
+
+	// Email notification (best-effort)
+	var recipientEmail string
+	_ = db.Conn.QueryRow(context.Background(), `SELECT email FROM users WHERE id = $1`, recipientID).Scan(&recipientEmail)
+	if recipientEmail != "" {
+		_ = alerts.EnqueueMessageNew(orderID, userID, recipientEmail, recipientID, body.Content)
+	}
 
 	return c.JSON(http.StatusOK, echo.Map{"message_id": msgID})
 }
