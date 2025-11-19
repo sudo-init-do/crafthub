@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Build binary
-RUN go build -o server ./cmd/server
+RUN go build -o server ./cmd/api
 
 # -------- Runtime Stage --------
 FROM alpine:latest
@@ -22,4 +22,5 @@ WORKDIR /app
 COPY --from=builder /app/server ./server
 
 EXPOSE 8080
+STOPSIGNAL SIGTERM
 CMD ["./server"]
