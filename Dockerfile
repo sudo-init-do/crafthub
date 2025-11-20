@@ -5,8 +5,8 @@ WORKDIR /app
 
 # Copy Go modules and download deps
 COPY go.mod go.sum ./
-ARG GOFLAGS
-ARG GOPROXY
+ARG GOFLAGS=-mod=mod
+ARG GOPROXY=https://proxy.golang.org,direct
 ENV GOFLAGS=${GOFLAGS}
 ENV GOPROXY=${GOPROXY}
 RUN go env && go mod download
