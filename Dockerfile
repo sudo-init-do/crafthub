@@ -1,5 +1,5 @@
 # -------- Build Stage --------
-FROM golang:1.23-alpine AS builder
+FROM golang:1.23 AS builder
 
 WORKDIR /app
 
@@ -10,17 +10,18 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binary
-RUN go build -o server ./cmd/api
+# Build static binary (no CGO)
+ENV CGO_ENABLED=0
+RUN go build -trimpath -ldflags "-s -w" -o server ./cmd/api
 
 # -------- Runtime Stage --------
-FROM alpine:latest
+FROM gcr.io/distroless/base-debian12
 
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/server ./server
+COPY --from=builder /app/server /app/server
 
 EXPOSE 8080
 STOPSIGNAL SIGTERM
-CMD ["./server"]
+ENTRYPOINT ["/app/server"]
