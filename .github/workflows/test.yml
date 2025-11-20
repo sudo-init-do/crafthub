@@ -65,6 +65,10 @@ jobs:
           pull: true
           build-args: |
             GOFLAGS=-mod=mod
+            GOPROXY=https://proxy.golang.org,direct
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
           tags: crafthub-ci:pr-${{ github.run_id }}
+        env:
+          BUILDKIT_PROGRESS: plain
+          DOCKER_BUILDKIT: 1
