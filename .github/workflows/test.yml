@@ -60,4 +60,11 @@ jobs:
         with:
           context: .
           push: false
+          platforms: linux/amd64
+          provenance: false
+          pull: true
+          build-args: |
+            GOFLAGS=-mod=mod
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
           tags: crafthub-ci:pr-${{ github.run_id }}
