@@ -31,6 +31,8 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
+      - name: Force module mode (disable vendor)
+        run: go env -w GOFLAGS=-mod=mod
       - name: Download modules
         run: go mod download
       - name: Vet
